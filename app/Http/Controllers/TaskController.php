@@ -69,14 +69,15 @@ class TaskController extends Controller
         $task = task::findOrFail($id);
 
         $validatedData = $request->validate([
-            'title' => 'sometimes|required|string|max:255',
-            'nom' => "sometimes|required|string|max:255",
-            "prix" => "sometimes|required|numeric|min:0",
-            'description' => 'nullable|string',
-            'completed' => 'boolean',
+            'title' => 'sometimes|string|max:255',
+            'nom' => "sometimes|string|max:255",
+            "prix" => "sometimes|numeric|min:0",
+            'description' => 'sometimes|string',
+            'completed' => 'sometimes|boolean',
         ]);
 
         $task->update($validatedData);
+        $task->refresh();
 
         return response()->json([
             'message' => "Tache mise à jour avec succès",
