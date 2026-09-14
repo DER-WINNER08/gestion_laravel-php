@@ -17,6 +17,10 @@ return new class extends Migration
             $table->string('nom');
             $table->decimal('prix', 10, 2);
             $table->text('description')->nullable();
+            $table->foreignId('category_id')
+                  ->nullable()
+                  ->constrained('categories')
+                  ->onDelete('set null');
             $table->boolean('completed')->default(false); 
             $table->timestamps();
         });
