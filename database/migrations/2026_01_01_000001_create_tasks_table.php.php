@@ -21,6 +21,9 @@ return new class extends Migration
                   ->nullable()
                   ->constrained('categories')
                   ->onDelete('set null');
+            $table->foreignId('user_id')
+                    ->constrained('users')
+                    ->onDelete('cascade');
             $table->boolean('completed')->default(false); 
             $table->timestamps();
         });
