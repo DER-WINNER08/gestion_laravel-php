@@ -2,22 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\UnauthorizedTaskException;
+use App\Exceptions\CategoryNotFoundException;
+use App\Exceptions\TaskCannotBeDeletedException;
+use App\Http\Resources\TaskResource;
 use App\Models\Task;
-use Illuminate\Http\Request;
+use App\Services\TaskService;
+use App\Http\Requests\StoreTaskRequest;
+use App\Http\Requests\TaskFilterRequest;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Exception;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class TaskController extends Controller
 {
+    public function __construct(protected TaskService $task_service)
+    {}
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(TaskFilterRequest $request): AnonymousResourceCollection
     {
-        $tasks = Task::all();
+        $perPage = $request->integer("per_page", 10);
 
-        return response()->json($tasks, 200);
+        $status = $request->input("status");
+
+        $categoryId = $request->input("category_id");
+
+        $tasks = $this->task_service->getUserTasks($request->user(), $perPage, $status, $categoryId);
+
+        return TaskResource::collection($tasks);
     }
 
     /**
@@ -31,28 +47,23 @@ class TaskController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreTaskRequest $request)
     {
         try {
-        $validatedData = $request->validate([
-            'title' => 'required|string|max:255',
-            'nom' => "required|string|max:255",
-            "prix" => "required|numeric|min:0",
-            'description' => 'nullable|string',
-            "category_id" => 'nullable|exists:categories,id',
-            'completed' => 'boolean',
-        ]);
-
-        Task::create($validatedData);
+            $task = $this->task_service->createTask($request->user(), $request->validated());
         
-        return response()->json(['message' => "tache créée avec succès"], 201);
-    } catch (QueryException $e) {
-        return response()->json([
-                'success' => false,
-                'message' => "Erreur d'intégrité des données : La catégorie spécifiée n'existe pas ou la requête SQL a échoué.",
-            ], 400);
-
-    } catch (Exception $e) {
+            return response()->json([
+                'message' => "tache créée avec succès",
+                'data'    => new TaskResource($task)
+                ], 201);
+        }
+        catch (CategoryNotFoundException $e){
+            return response()->json([
+                "success" => false,
+                "message" => $e->getMessage()
+            ]);
+        }
+        catch (Exception $e) {
         {
             return response()->json([
                 'success' => false,
@@ -66,30 +77,11 @@ class TaskController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show($id)
+    public function show(Task $task): TaskResource
     {
-       try {
-            // ERREUR ANTICIPÉE N°1 : La tâche recherchée n'existe pas
-            $task = Task::with('category')->findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'data' => $task
-            ], 200);
-
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => "Ressource introuvable : La tâche avec l'ID {$id} n'existe pas."
-            ], 404);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Une erreur interne est survenue.',
-                'error' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
-        }
+            $this->authorize('view', $task);
+            return new TaskResource($task->load('user'));
     }
 
     /**
@@ -103,10 +95,9 @@ class TaskController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, $id)
+    public function update(StoreTaskRequest $request, Task $task,): JsonResponse
     {
         try {
-            $task = Task::findOrFail($id);
 
             if (empty($request->all())) {
                 return response()->json([
@@ -114,26 +105,26 @@ class TaskController extends Controller
                     'message' => 'Aucune donnée n\'a été fournie pour la mise à jour.'
                 ], 400);
             }
-            $task->update($request->all());
 
-            $validatedData = $request->validate([
-                'title' => 'sometimes|string|max:255',
-                'nom' => "sometimes|string|max:255",
-                "prix" => "sometimes|numeric|min:0",
-                'description' => 'sometimes|string',
-                'completed' => 'sometimes|boolean',
-            ]);
-            $task->update($validatedData);
+            $this->authorize('update, $task');
+            $updatedTask = $this->task_service->updateTask($task, $request->validated());
 
             return response()->json([
                 'success'=> true,
                 'message' => "Tache mise à jour avec succès",
-                "task" => $task ], 200);
+                "data" => new TaskResource($updatedTask) ], 200);
     }
+
+    catch (UnauthorizedTaskException $e){
+        return response()->json([
+            "success" => false,
+            "message" => "vous n'etes pas authorizer a faire cette action"
+        ], 403);
+    } 
     catch (ModelNotFoundException $e) {
         return response()->json([
                     'success' => false,
-                    'message' => "Impossible de modifier : La tâche avec l'ID {$id} est introuvable."
+                    'message' => "Impossible de modifier : La tâche est introuvable."
                 ], 404);
 
     } catch (QueryException $e) {
@@ -146,19 +137,26 @@ class TaskController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id)
+    public function destroy(Task $task): JsonResponse
     {
         try {
-            $task = Task::findOrFail($id);
-            $task->delete();
+            $this->authorize('delete, $task');
+            $this->task_service->deleteTask($task);
 
             return response()->json([
-                'message' => "Tâche {$id} supprimée avec succès"
+                'message' => "Tâche supprimée avec succès"
             ], 200);
-        } catch (ModelNotFoundException $e) {
+        }
+        catch (TaskCannotBeDeletedException $e){
+            return response()->json([
+                "success" => false,
+                "message" => $e->getMessage()
+            ], 400);
+        }
+        catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => "Impossible de supprimer : La tâche {$id} n'existe pas ou a déjà été supprimée."
+                'message' => "Impossible de supprimer : La tâche n'existe pas ou a déjà été supprimée."
             ], 404);
 
         } catch (Exception $e) {

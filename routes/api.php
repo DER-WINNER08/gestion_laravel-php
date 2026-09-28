@@ -1,13 +1,20 @@
 <?php
 
 use App\Http\Controllers\TaskController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\api\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CategoryController;
 
-Route::post("/tasks" , [TaskController::class,"store"]);
-Route::get("/tasks" , [TaskController::class,"index"]);
-Route::get("/tasks/{id}", [TaskController::class,"show"]);
-Route::put('/tasks/{id}', [TaskController::class, 'update']);
-Route::delete('/tasks/{id}', [TaskController::class, 'destroy']);
 Route::apiResource('categories', CategoryController::class);
+
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('tasks', [TaskController::class, 'index']);
+    Route::post('tasks', [TaskController::class, 'store']);
+    Route::get('tasks/{task}', [TaskController::class, 'show']);
+    Route::patch('tasks/{task}', [TaskController::class, 'update']);
+    Route::delete('tasks/{task}', [TaskController::class, 'destroy']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+});

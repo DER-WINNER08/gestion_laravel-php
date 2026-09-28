@@ -14,17 +14,15 @@ return new class extends Migration
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->string('nom');
-            $table->decimal('prix', 10, 2);
             $table->text('description')->nullable();
+             $table->enum('status', ['draft', 'in_progress', 'completed'])->default('draft');
             $table->foreignId('category_id')
                   ->nullable()
                   ->constrained('categories')
                   ->onDelete('set null');
             $table->foreignId('user_id')
                     ->constrained('users')
-                    ->onDelete('cascade');
-            $table->boolean('completed')->default(false); 
+                    ->onDelete('cascade'); 
             $table->timestamps();
         });
     }
